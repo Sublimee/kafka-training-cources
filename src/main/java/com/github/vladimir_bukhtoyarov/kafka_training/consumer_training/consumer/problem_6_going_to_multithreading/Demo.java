@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_2_missed_topics._the_problem;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_6_going_to_multithreading;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -7,49 +7,40 @@ import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Pro
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class Demo {
 
     // ********* Plan **************
-    // 1 - Start producer, Start consumer
+    // 0 - Describe the changes in consumer related to multi-threading consumption:
+    //        - Ordered commits inside partition
+    //        - Complexity of rebalance listener
+    //        - Graceful shutdown
     //
-    // 2 - Show consumer logs
-    //     Point that missed topic detected by health-check
+    // 1 - Start producer.
+    //     Wait for a 30 seconds.
     //
-    // 3 - Run CreateTopic
-    //     Show consumer log, point that health-check is healthy
-    //     Describe the differences in missed topic handling in 1.0 and 0.10
-
-
-    private static final class StartConsumer_1 {
-        public static void main(String[] args) {
-            Set<String> topics = new HashSet<>(Arrays.asList(
-                    Constants.TOPIC, "not-existed"
-            ));
-            Consumer consumer = new Consumer("consumer-1", topics);
-            consumer.start();
-            initHealthCheck(consumer);
-        }
-    }
+    // 2 - Start consumer-1
+    //     Show lag in admin panel.
+    //     Show lag in logs.
+    //     Wait until lag will be decreased to zero
 
     private static final class StartProducer {
         public static void main(String[] args) {
-            Bandwidth bandwidth = Bandwidth.simple(1, Duration.ofSeconds(3))
+            Bandwidth bandwidth = Bandwidth.simple(100, Duration.ofSeconds(1))
                     .withInitialTokens(0);
             Bucket rateLimiter = Bucket4j.builder().addLimit(bandwidth).build();
 
             Iterator<ProducerRecord<String, Message>> records = new InfiniteIterator<>(() -> {
                 Message message = new Message();
                 message.setPayload(UUID.randomUUID().toString());
+                message.setDelayMillis(1000);
                 return new ProducerRecord<>(Constants.TOPIC, message);
             });
 
@@ -58,7 +49,19 @@ public class Demo {
         }
     }
 
-    private static void initHealthCheck(Consumer consumer) {
+    private static final class StartConsumer_1 {
+        public static void main(String[] args) {
+            Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
+            BlockingQueue queue = new LinkedBlockingQueue();
+            ThreadPoolExecutor executor = new ThreadPoolExecutor(200, 200, Long.MAX_VALUE, TimeUnit.MILLISECONDS, queue);
+
+            Consumer consumer = new Consumer("consumer-1", topics, executor);
+            consumer.start();
+            initHealthCheck(consumer, executor);
+        }
+    }
+
+    private static void initHealthCheck(Consumer consumer, ThreadPoolExecutor executor) {
         Logger logger = LoggerFactory.getLogger("health-check");
         Timer healthCheckTimer = new Timer("Consumer health-checker");
         healthCheckTimer.scheduleAtFixedRate(new TimerTask() {
@@ -74,6 +77,7 @@ public class Demo {
                 } catch (Throwable t) {
                     logger.error("Failed to check health of consumer", t);
                 }
+                logger.info("Executor queue size is {}, active thread count is {}", executor.getQueue().size(), executor.getActiveCount());
             }
         }, 10000, 10000);
     }

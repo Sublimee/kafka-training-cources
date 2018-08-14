@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_5_consumer_overloading.healthcheck_for_consumer_overloading;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_6_going_to_multithreading;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -16,8 +16,12 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 
 public class Consumer {
 
@@ -29,22 +33,25 @@ public class Consumer {
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
     private final Set<String> topics;
+    private final ExecutorService executor;
 
     private volatile List<String> unassignedTopics;
     private volatile String lastPollError;
     private volatile long lastPollStartedTimestamp;
     private volatile long lag = 0;
 
+    private final Map<TopicPartition, Deque<RecordInProgress>> recordsInProgress = new HashMap<>();
+
     private Bucket updateLagThrottler = Bucket4j.builder()
                                     .addLimit(Bandwidth.simple(1, Duration.ofSeconds(10)))
                                     .withSynchronizationStrategy(SynchronizationStrategy.NONE)
                                     .build();
 
-    public Consumer(String clientId, Set<String> topics) {
-        this(clientId, topics, Collections.emptyMap());
+    public Consumer(String clientId, Set<String> topics, ExecutorService executor) {
+        this(clientId, topics, executor, Collections.emptyMap());
     }
 
-    public Consumer(String clientId, Set<String> topics, Map<String, Object> propertiesOverride) {
+    public Consumer(String clientId, Set<String> topics, ExecutorService executor, Map<String, Object> propertiesOverride) {
         Properties properties = new Properties();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, Constants.bootstrapServers);
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
@@ -57,6 +64,7 @@ public class Consumer {
         this.consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new JsonSerDer());
         this.topics = topics;
         this.unassignedTopics = new ArrayList<>(topics);
+        this.executor = executor;
 
         consumer.subscribe(topics, new RebalanceListener());
     }
@@ -66,6 +74,8 @@ public class Consumer {
     }
 
     public void shutdown() {
+        consumer.pause(consumer.assignment());
+        waitAllMessageToBeProcessedAndCommit();
         consumer.wakeup();
     }
 
@@ -96,19 +106,23 @@ public class Consumer {
             return;
         }
 
+        // schedule async task for all incoming message
         for (ConsumerRecord<String, Message> record : records) {
+            CompletableFuture<Void> feature;
             try {
-                processRecord(record);
+                feature = scheduleRecord(record);
             } catch (Throwable t) {
-                logger.error("Failed to process record {}", record, t);
+                feature = new CompletableFuture<>();
+                feature.completeExceptionally(t);
+                logger.error("Failed to schedule record {}", record, t);
             }
+            RecordInProgress recordInProgress = new RecordInProgress(record, feature);
+            TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
+            Deque<RecordInProgress> partitionInProgressRecords = recordsInProgress.computeIfAbsent(topicPartition, key -> new LinkedList<>());
+            partitionInProgressRecords.add(recordInProgress);
         }
 
-        try {
-            consumer.commitSync();
-        } catch (Throwable t) {
-            logger.error("Failed to commit messages", t);
-        }
+        asyncCommitProcessedMessages();
 
         try {
             updateLag();
@@ -116,6 +130,34 @@ public class Consumer {
             logger.error("Failed to update lag statistics", t);
         }
 
+    }
+
+    private void asyncCommitProcessedMessages() {
+        int messagesToCommitCount = 0;
+        Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
+
+        for (Map.Entry<TopicPartition, Deque<RecordInProgress>> partitionEntry : recordsInProgress.entrySet()) {
+            TopicPartition topicPartition = partitionEntry.getKey();
+            Deque<RecordInProgress> partitionRecords = partitionEntry.getValue();
+            while (true) {
+                RecordInProgress recordInProgress = partitionRecords.peekFirst();
+                if (recordInProgress == null || !recordInProgress.getResult().isDone()) {
+                    break;
+                }
+                messagesToCommitCount++;
+                OffsetAndMetadata offsetToCommit = new OffsetAndMetadata(recordInProgress.getRecord().offset() + 1);
+                offsetsToCommit.put(topicPartition, offsetToCommit);
+                partitionRecords.removeFirst();
+            }
+        }
+
+        if (offsetsToCommit.isEmpty() ) {
+            return;
+        }
+
+        logger.info("Going to commit {} messages", messagesToCommitCount);
+        OffsetCommitCallback callback = new AsyncOffsetCommitCallback(offsetsToCommit, messagesToCommitCount);
+        consumer.commitAsync(offsetsToCommit, callback);
     }
 
     private void updateLag() {
@@ -140,20 +182,28 @@ public class Consumer {
         this.lag = lag;
     }
 
-    private void processRecord(ConsumerRecord<String, Message> record) throws Throwable {
-        String key = record.key();
-        Message payload = record.value();
-        logger.info("Received partition={} offset={} key={} payload={}", record.partition(), record.offset(), key, payload);
+    private CompletableFuture<Void> scheduleRecord(ConsumerRecord<String, Message> record) {
+        Supplier<Void> resultSupplier = () -> {
+            String key = record.key();
+            Message payload = record.value();
+            logger.info("Received partition={} offset={} key={} payload={}", record.partition(), record.offset(), key, payload);
 
-        if (payload.getDelayMillis() != null) {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(payload.getDelayMillis()));
-        }
-
-        if (payload.getErrorClass() != null) {
-            Class errorClass = Class.forName(payload.getErrorClass());
-            Throwable t = (Throwable) errorClass.newInstance();
-            throw t;
-        }
+            if (payload.getDelayMillis() != null) {
+                LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(payload.getDelayMillis()));
+            }
+            if (payload.getErrorClass() == null) {
+                return null;
+            }
+            Throwable t;
+            try {
+                Class errorClass = Class.forName(payload.getErrorClass());
+                t = (Throwable) errorClass.newInstance();
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+            throw new RuntimeException(t);
+        };
+        return CompletableFuture.supplyAsync(resultSupplier, executor);
     }
 
     public HealthStatus getHealth() {
@@ -208,6 +258,80 @@ public class Consumer {
         return new HealthStatus(healthy, msgBuilder.toString());
     }
 
+
+    private class AsyncOffsetCommitCallback implements OffsetCommitCallback {
+
+        private final Map<TopicPartition, OffsetAndMetadata> offsetsToCommit;
+        private final int messagesToCommit;
+
+        private AsyncOffsetCommitCallback(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit, int messagesToCommit) {
+            this.offsetsToCommit = offsetsToCommit;
+            this.messagesToCommit = messagesToCommit;
+        }
+
+        @Override
+        public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception exception) {
+            // independent from result we issue permits to consume more massages from broker
+            if (exception == null) {
+                logger.info("Successfully committed {} messages", messagesToCommit);
+            } else {
+                logger.error("Fail to commit partitions {}, the {} messages can be duplicated", offsetsToCommit, messagesToCommit, exception);
+            }
+        }
+    }
+
+    private void waitAllMessageToBeProcessedAndCommit() {
+        int messagesToCommit = 0;
+
+        for (Map.Entry<TopicPartition, Deque<RecordInProgress>> partitionEntry : recordsInProgress.entrySet()) {
+            for (RecordInProgress messageFuture : partitionEntry.getValue()) {
+                messagesToCommit++;
+                while (true) {
+                    if (!messageFuture.getResult().isDone()) {
+                        try {
+                            messageFuture.getResult().get();
+                            break;
+                        } catch (Throwable t) {
+                            logger.error("Failed to wait feature result", t);
+                        }
+                    }
+                }
+            }
+        }
+        if (messagesToCommit <= 0) {
+            logger.info("Nothing to commit");
+            return;
+        }
+        try {
+            consumer.commitSync();
+            logger.info("Successfully committed {} messages", messagesToCommit);
+        } catch (Throwable t) {
+            logger.error("{} messages can be duplicated because of fail to commit", messagesToCommit, t);
+        } finally {
+            recordsInProgress.clear();
+        }
+    }
+
+    private static class RecordInProgress {
+
+        private final ConsumerRecord<String, Message> record;
+        private final CompletableFuture<Void> result;
+
+        public RecordInProgress(ConsumerRecord<String, Message> record, CompletableFuture<Void> result) {
+            this.record = record;
+            this.result = result;
+        }
+
+        public CompletableFuture<Void> getResult() {
+            return result;
+        }
+
+        public ConsumerRecord<String, Message> getRecord() {
+            return record;
+        }
+
+    }
+
     public static final class HealthStatus {
 
         private final boolean healthy;
@@ -240,6 +364,9 @@ public class Consumer {
         @Override
         public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
             unassignedTopics = new ArrayList<>(topics);
+
+            // need to wait for processing already taken messages in order to avoid duplicates
+            waitAllMessageToBeProcessedAndCommit();
         }
 
         @Override
