@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.initial;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
