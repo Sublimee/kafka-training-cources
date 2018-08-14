@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.starvation_healthcheck_1;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -8,19 +8,18 @@ import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.UUID;
+import java.util.*;
 
 public class Demo {
 
     // ********* Plan **************
     // 1 - Start producer and consumers 1,2,3,4
     //
-    // 2 - Show that one consumer reads nothing and there are no errors in the logs.
-    //     Describe why health-check to cover this problem has matter.
+    // 2 - Explain why healthcheck implementation is wrong
 
 
     private static final class StartProducer {
@@ -44,6 +43,7 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-1", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
@@ -51,6 +51,7 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-2", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
@@ -58,6 +59,7 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-3", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
@@ -65,7 +67,28 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-4", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
+    }
+
+    private static void initHealthCheck(Consumer consumer) {
+        Logger logger = LoggerFactory.getLogger("health-check");
+        Timer healthCheckTimer = new Timer("Consumer health-checker");
+        healthCheckTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    Consumer.HealthStatus status = consumer.getHealth();
+                    if (status.isHealthy()) {
+                        logger.info("" + status);
+                    } else {
+                        logger.error("" + status);
+                    }
+                } catch (Throwable t) {
+                    logger.error("Failed to check health of consumer", t);
+                }
+            }
+        }, 10000, 10000);
     }
 
 }

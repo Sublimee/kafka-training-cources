@@ -21,18 +21,18 @@ public class Demo {
     //     Show few messages via admin panel.
     //     Explain producer logs(partitions, offset).
     //
-    // 4 - Start consumer-1, show consumer logs.
+    // 2 - Start consumer-1, show consumer logs.
     //     Point that consumer-1 listen all partitions.
     //     Point to the offset from that consumer started to listen.
     //
-    // 5 - Restart  consumer-1,
+    // 3 - Restart  consumer-1,
     //     Point to the offset from that consumer started to listen.
     //     Explain why "auto.offset.reset" is very major option.
     //
-    // 6 - Start consumer-2,
+    // 4 - Start consumer-2,
     //     Show consumer group on topic panel, point to the unfair partitioning.
     //
-    // 7 - Start consumer-3, Show consumer group on topic panel, point to the balanced partitioning.
+    // 5 - Start consumer-3, Show consumer group on topic panel, point to the balanced partitioning.
 
     private static final class StartProducer {
         public static void main(String[] args) {
