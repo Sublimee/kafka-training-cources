@@ -99,7 +99,7 @@ public class Consumer {
         }
 
         // check assignment
-        msgBuilder.append(" ");
+        msgBuilder.append(" /");
         List<String> unassignedTopics = this.unassignedTopics;
         if (unassignedTopics.isEmpty()) {
             msgBuilder.append("Consumer assigned to all topics " + topics);

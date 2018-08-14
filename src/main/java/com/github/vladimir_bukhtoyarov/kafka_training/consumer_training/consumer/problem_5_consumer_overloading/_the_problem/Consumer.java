@@ -127,7 +127,7 @@ public class Consumer {
         }
 
         // check assignment
-        msgBuilder.append(" ");
+        msgBuilder.append(" /");
         List<String> unassignedTopics = this.unassignedTopics;
         if (unassignedTopics.isEmpty()) {
             msgBuilder.append("Consumer assigned to all topics " + topics);
@@ -137,7 +137,7 @@ public class Consumer {
         }
 
         // check success of last poll
-        msgBuilder.append(" ");
+        msgBuilder.append(" /");
         String lastPollError = this.lastPollError;
         long lastPollStartedTimestamp = this.lastPollStartedTimestamp;
         if (lastPollStartedTimestamp == 0) {
@@ -147,6 +147,7 @@ public class Consumer {
             healthy = false;
             msgBuilder.append("Last poll failed with error " + lastPollError);
         } else if (System.currentTimeMillis() - lastPollStartedTimestamp > POLL_THREASHOLD) {
+            healthy = false;
             long inProgressMillis = System.currentTimeMillis() - lastPollStartedTimestamp;
             msgBuilder.append("Poll hanged for " + inProgressMillis + " milliseconds");
         } else {

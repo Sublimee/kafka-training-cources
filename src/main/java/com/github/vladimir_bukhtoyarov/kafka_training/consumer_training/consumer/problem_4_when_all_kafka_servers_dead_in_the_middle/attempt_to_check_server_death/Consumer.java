@@ -124,7 +124,7 @@ public class Consumer {
         }
 
         // check assignment
-        msgBuilder.append(" ");
+        msgBuilder.append(" /");
         List<String> unassignedTopics = this.unassignedTopics;
         if (unassignedTopics.isEmpty()) {
             msgBuilder.append("Consumer assigned to all topics " + topics);
@@ -134,7 +134,7 @@ public class Consumer {
         }
 
         // check success of last poll
-        msgBuilder.append(" ");
+        msgBuilder.append(" /");
         String lastPollError = this.lastPollError;
         if (lastPollError == null) {
             msgBuilder.append("Last poll finished successfully.");

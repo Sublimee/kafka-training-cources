@@ -1,8 +1,12 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_3_dead_consumer.prevent_consumer_death;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_5_consumer_overloading.healthcheck_for_consumer_overloading;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Message;
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
+import io.github.bucket4j.Bucket4j;
+import io.github.bucket4j.local.SynchronizationStrategy;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
@@ -10,6 +14,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
@@ -17,12 +22,23 @@ import java.util.concurrent.locks.LockSupport;
 public class Consumer {
 
     private static final Logger logger = LoggerFactory.getLogger(Consumer.class);
+    public static final long POLL_TIMEOUT = 1000L;
+    public static final long POLL_THREASHOLD = POLL_TIMEOUT * 3;
+    public static final long LAG_THREASHOLD = 1000;
 
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
     private final Set<String> topics;
 
     private volatile List<String> unassignedTopics;
+    private volatile String lastPollError;
+    private volatile long lastPollStartedTimestamp;
+    private volatile long lag = 0;
+
+    private Bucket updateLagTrottler = Bucket4j.builder()
+                                    .addLimit(Bandwidth.simple(1, Duration.ofSeconds(10)))
+                                    .withSynchronizationStrategy(SynchronizationStrategy.NONE)
+                                    .build();
 
     public Consumer(String clientId, Set<String> topics) {
         this(clientId, topics, Collections.emptyMap());
@@ -54,6 +70,7 @@ public class Consumer {
     }
 
     private void consumeInfinitely() {
+        logger.info("Consumer started");
         try {
             while (true) {
                 pollAndProcess();
@@ -70,9 +87,12 @@ public class Consumer {
     private void pollAndProcess() {
         ConsumerRecords<String, Message> records;
         try {
-            records = consumer.poll(Long.MAX_VALUE);
+            lastPollStartedTimestamp = System.currentTimeMillis();
+            records = consumer.poll(POLL_TIMEOUT);
+            this.lastPollError = null;
         } catch (Throwable t) {
             logger.error("Failed to poll messages", t);
+            this.lastPollError = "Last poll failed with error " + t.getMessage();
             return;
         }
 
@@ -89,6 +109,35 @@ public class Consumer {
         } catch (Throwable t) {
             logger.error("Failed to commit messages", t);
         }
+
+        try {
+            updateLag();
+        } catch (Throwable t) {
+            logger.error("Failed to update lag statistics", t);
+        }
+
+    }
+
+    private void updateLag() {
+        if (!updateLagTrottler.tryConsume(1)) {
+            return;
+        }
+        Set<TopicPartition> assignment = consumer.assignment();
+        Map<TopicPartition, Long> endOffsets = consumer.endOffsets(assignment);
+
+        long lag = 0;
+        for (TopicPartition assignedPartiotion: assignment) {
+            long position = consumer.position(assignedPartiotion);
+            Long endOffset = endOffsets.get(assignedPartiotion);
+            if (endOffset == null) {
+                continue;
+            }
+            long partitionLag = endOffset - position;
+            if (partitionLag > 0) {
+                lag += partitionLag;
+            }
+        }
+        this.lag = lag;
     }
 
     private void processRecord(ConsumerRecord<String, Message> record) throws Throwable {
@@ -126,6 +175,34 @@ public class Consumer {
         } else {
             healthy = false;
             msgBuilder.append("Consumer not assigned to topics " + unassignedTopics);
+        }
+
+        // check success of last poll
+        msgBuilder.append(" /");
+        String lastPollError = this.lastPollError;
+        long lastPollStartedTimestamp = this.lastPollStartedTimestamp;
+        if (lastPollStartedTimestamp == 0) {
+            healthy = false;
+            msgBuilder.append("Poll never started.");
+        } else if (lastPollError != null) {
+            healthy = false;
+            msgBuilder.append("Last poll failed with error " + lastPollError);
+        } else if (System.currentTimeMillis() - lastPollStartedTimestamp > POLL_THREASHOLD) {
+            healthy = false;
+            long inProgressMillis = System.currentTimeMillis() - lastPollStartedTimestamp;
+            msgBuilder.append("Poll hanged for " + inProgressMillis + " milliseconds");
+        } else {
+            msgBuilder.append("Last poll finished successfully.");
+        }
+
+        // check the lag
+        msgBuilder.append(" /");
+        long lag = this.lag;
+        if (lag > LAG_THREASHOLD) {
+            healthy = false;
+            msgBuilder.append("Consumer overloaded. Lag is " + lag + " messages");
+        } else {
+            msgBuilder.append("Lag is " + lag + " messages");
         }
 
         return new HealthStatus(healthy, msgBuilder.toString());
