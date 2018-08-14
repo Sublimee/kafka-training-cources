@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_servers_dead_in_the_middle.work_arround_to_check_server_death;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_5_consumer_overloading._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;

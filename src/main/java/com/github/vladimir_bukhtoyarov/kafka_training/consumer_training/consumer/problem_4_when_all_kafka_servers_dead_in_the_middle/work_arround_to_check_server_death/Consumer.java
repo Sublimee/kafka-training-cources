@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_servers_dead_in_the_middle.attempt_to_check_server_death;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_kafka_servers_dead_in_the_middle.work_arround_to_check_server_death;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -18,6 +18,7 @@ public class Consumer {
 
     private static final Logger logger = LoggerFactory.getLogger(Consumer.class);
     public static final long POLL_TIMEOUT = 1000L;
+    public static final long POLL_THREASHOLD = POLL_TIMEOUT * 3;
 
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
@@ -25,6 +26,7 @@ public class Consumer {
 
     private volatile List<String> unassignedTopics;
     private volatile String lastPollError;
+    private volatile long lastPollStartedTimestamp;
 
     public Consumer(String clientId, Set<String> topics) {
         this(clientId, topics, Collections.emptyMap());
@@ -73,6 +75,7 @@ public class Consumer {
     private void pollAndProcess() {
         ConsumerRecords<String, Message> records;
         try {
+            lastPollStartedTimestamp = System.currentTimeMillis();
             records = consumer.poll(POLL_TIMEOUT);
             this.lastPollError = null;
         } catch (Throwable t) {
@@ -136,11 +139,18 @@ public class Consumer {
         // check success of last poll
         msgBuilder.append(" ");
         String lastPollError = this.lastPollError;
-        if (lastPollError == null) {
-            msgBuilder.append("Last poll finished successfully.");
-        } else {
+        long lastPollStartedTimestamp = this.lastPollStartedTimestamp;
+        if (lastPollStartedTimestamp == 0) {
+            healthy = false;
+            msgBuilder.append("Poll never started.");
+        } else if (lastPollError != null) {
             healthy = false;
             msgBuilder.append("Last poll failed with error " + lastPollError);
+        } else if (System.currentTimeMillis() - lastPollStartedTimestamp > POLL_THREASHOLD) {
+            long inProgressMillis = System.currentTimeMillis() - lastPollStartedTimestamp;
+            msgBuilder.append("Poll hanged for " + inProgressMillis + " milliseconds");
+        } else {
+            msgBuilder.append("Last poll finished successfully.");
         }
 
         return new HealthStatus(healthy, msgBuilder.toString());

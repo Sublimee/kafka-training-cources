@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_servers_dead_in_the_middle.attempt_to_check_server_death;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_5_consumer_overloading._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -17,15 +17,32 @@ import java.util.*;
 public class Demo {
 
     // ********* Plan **************
-    // 0 - Describe the consumer changes (poll-timeout and health-check)
+    // 1 - Start consumers 1,2,3
     //
-    // 1 - Start kafka server(if necessary)
+    // 2 - Start producer.
     //
-    // 2 - Start consumer-1
-    //
-    // 3 - Stop kafka server.
-    //     Show the consumer log, point that health-check is wrong.
-    //     Point that "poll" never returns, there are no "Failed to poll messages" error in log
+    // 3 - Show consumer lags on admin panel.
+    //     Point that consumer does not know about its lag.
+    //     Describe the complexity of problem, mention about practices of Confluent and HortonWorks to calculate the lag
+
+    private static final class StartProducer {
+        public static void main(String[] args) {
+            Bandwidth bandwidth = Bandwidth.simple(100, Duration.ofSeconds(1))
+                    .withInitialTokens(0);
+            Bucket rateLimiter = Bucket4j.builder().addLimit(bandwidth).build();
+
+            Iterator<ProducerRecord<String, Message>> records = new InfiniteIterator<>(() -> {
+                Message message = new Message();
+                message.setPayload(UUID.randomUUID().toString());
+                message.setDelayMillis(1000);
+                return new ProducerRecord<>(Constants.TOPIC, message);
+            });
+
+            Producer producer = new Producer();
+            producer.send(rateLimiter, records);
+        }
+    }
+
     private static final class StartConsumer_1 {
         public static void main(String[] args) {
             Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
@@ -35,20 +52,21 @@ public class Demo {
         }
     }
 
-    private static final class StartProducer {
+    private static final class StartConsumer_2 {
         public static void main(String[] args) {
-            Bandwidth bandwidth = Bandwidth.simple(1, Duration.ofSeconds(3))
-                    .withInitialTokens(0);
-            Bucket rateLimiter = Bucket4j.builder().addLimit(bandwidth).build();
+            Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
+            Consumer consumer = new Consumer("consumer-2", topics);
+            consumer.start();
+            initHealthCheck(consumer);
+        }
+    }
 
-            Iterator<ProducerRecord<String, Message>> records = new InfiniteIterator<>(() -> {
-                Message message = new Message();
-                message.setPayload(UUID.randomUUID().toString());
-                return new ProducerRecord<>(Constants.TOPIC, message);
-            });
-
-            Producer producer = new Producer();
-            producer.send(rateLimiter, records);
+    private static final class StartConsumer_3 {
+        public static void main(String[] args) {
+            Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
+            Consumer consumer = new Consumer("consumer-3", topics);
+            consumer.start();
+            initHealthCheck(consumer);
         }
     }
 

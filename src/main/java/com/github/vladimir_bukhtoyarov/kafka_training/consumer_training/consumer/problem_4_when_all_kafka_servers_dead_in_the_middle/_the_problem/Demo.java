@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_servers_dead_in_the_middle._the_problem;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_kafka_servers_dead_in_the_middle._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;

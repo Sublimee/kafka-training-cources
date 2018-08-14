@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_servers_dead_in_the_middle.work_arround_to_check_server_death;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_4_when_all_kafka_servers_dead_in_the_middle.attempt_to_check_server_death;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -24,7 +24,8 @@ public class Demo {
     // 2 - Start consumer-1
     //
     // 3 - Stop kafka server.
-    //     Show the consumer log, point that health-check detects the failure.
+    //     Show the consumer log, point that health-check is wrong.
+    //     Point that "poll" never returns, there are no "Failed to poll messages" error in log
     private static final class StartConsumer_1 {
         public static void main(String[] args) {
             Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
