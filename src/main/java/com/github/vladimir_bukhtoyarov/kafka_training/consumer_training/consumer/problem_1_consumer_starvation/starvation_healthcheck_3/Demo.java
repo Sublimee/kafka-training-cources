@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.initial;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.starvation_healthcheck_3;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -7,8 +7,9 @@ import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Pro
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
@@ -16,26 +17,9 @@ import java.util.*;
 public class Demo {
 
     // ********* Plan **************
-    // 1 - Start producer.
-    //     Show few messages via admin panel.
-    //     Explain producer logs(partitions, offset).
+    // 1 - Stop producer(if necessary), start consumers 1,2,3,4
     //
-    // 2 - Start consumer-1, show consumer logs.
-    //     Point that consumer-1 listen all partitions.
-    //     Point to the offset from that consumer started to listen.
-    //
-    // 3 - Restart  consumer-1,
-    //     Point to the offset from that consumer started to listen.
-    //     Explain why "auto.offset.reset" is very major option.
-    //
-    // 4 - Start consumer-2,
-    //     Show consumer group on topic panel, point to the unfair partitioning.
-    //
-    // 5 - Start consumer-3, Show consumer group on topic panel, point to the balanced partitioning.
-
-    // 6 - Start consumer-4, show consumer logs.
-    //     Point that consumer-4 listen all partitions.
-    //     Point to the offset from that consumer started to listen, describe the differences with consumer-1
+    // 2 - Show passed and failed checks
 
     private static final class StartProducer {
         public static void main(String[] args) {
@@ -58,6 +42,7 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-1", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
@@ -65,6 +50,7 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-2", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
@@ -72,18 +58,36 @@ public class Demo {
         public static void main(String[] args) {
             Consumer consumer = new Consumer("consumer-3", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
     private static final class StartConsumer_4 {
         public static void main(String[] args) {
-            Map<String, Object> overrides = new HashMap<>();
-            overrides.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-            overrides.put(ConsumerConfig.GROUP_ID_CONFIG, "group-2");
-            Consumer consumer = new Consumer("consumer-4", Collections.singleton(Constants.TOPIC), overrides);
+            Consumer consumer = new Consumer("consumer-4", Collections.singleton(Constants.TOPIC));
             consumer.start();
+            initHealthCheck(consumer);
         }
     }
 
+    private static void initHealthCheck(Consumer consumer) {
+        Logger logger = LoggerFactory.getLogger("health-check");
+        Timer healthCheckTimer = new Timer("Consumer health-checker");
+        healthCheckTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    Consumer.HealthStatus status = consumer.getHealth();
+                    if (status.isHealthy()) {
+                        logger.info("" + status);
+                    } else {
+                        logger.error("" + status);
+                    }
+                } catch (Throwable t) {
+                    logger.error("Failed to check health of consumer", t);
+                }
+            }
+        }, 10000, 10000);
+    }
 
 }
