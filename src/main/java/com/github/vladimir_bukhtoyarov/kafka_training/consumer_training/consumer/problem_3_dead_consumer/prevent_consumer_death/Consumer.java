@@ -1,12 +1,9 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.starvation_healthcheck_2;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_3_dead_consumer.prevent_consumer_death;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Message;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -44,7 +41,8 @@ public class Consumer {
         this.consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new JsonSerDer());
         this.topics = topics;
         this.unassignedTopics = new ArrayList<>(topics);
-        consumer.subscribe(topics);
+
+        consumer.subscribe(topics, new RebalanceListener());
     }
 
     public void start() {
@@ -58,12 +56,7 @@ public class Consumer {
     private void consumeInfinitely() {
         try {
             while (true) {
-                ConsumerRecords<String, Message> records = consumer.poll(Long.MAX_VALUE);
-                for (ConsumerRecord<String, Message> record : records) {
-                    processRecord(record);
-                }
-                consumer.commitSync();
-                checkAssignment();
+                pollAndProcess();
             }
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
@@ -74,16 +67,28 @@ public class Consumer {
         }
     }
 
-    private void checkAssignment() {
-        List<String> unassignedTopics = new ArrayList<>(topics);
-        Set<TopicPartition> assignment = this.consumer.assignment();
-        for (TopicPartition topicPartition : assignment) {
-            unassignedTopics.remove(topicPartition.topic());
-            if (unassignedTopics.isEmpty()) {
-                break;
+    private void pollAndProcess() {
+        ConsumerRecords<String, Message> records;
+        try {
+            records = consumer.poll(Long.MAX_VALUE);
+        } catch (Throwable t) {
+            logger.error("Failed to poll messages", t);
+            return;
+        }
+
+        for (ConsumerRecord<String, Message> record : records) {
+            try {
+                processRecord(record);
+            } catch (Throwable t) {
+                logger.error("Failed to process record {}", record, t);
             }
         }
-        this.unassignedTopics = unassignedTopics;
+
+        try {
+            consumer.commitSync();
+        } catch (Throwable t) {
+            logger.error("Failed to commit messages", t);
+        }
     }
 
     private void processRecord(ConsumerRecord<String, Message> record) throws Throwable {
@@ -103,12 +108,27 @@ public class Consumer {
     }
 
     public HealthStatus getHealth() {
+        StringBuilder msgBuilder = new StringBuilder();
+        boolean healthy = true;
+
+        // check consumer thread
+        if (thread.isAlive()) {
+            msgBuilder.append("Consumer thread " + thread.getName() + " is alive");
+        } else {
+            return new HealthStatus(false, "Consumer thread " + thread.getName() + " is dead");
+        }
+
+        // check assignment
+        msgBuilder.append(" ");
         List<String> unassignedTopics = this.unassignedTopics;
         if (unassignedTopics.isEmpty()) {
-            return new HealthStatus(true, "Consumer assigned to all topics " + topics);
+            msgBuilder.append("Consumer assigned to all topics " + topics);
         } else {
-            return new HealthStatus(false, "Consumer not assigned to topics " + unassignedTopics);
+            healthy = false;
+            msgBuilder.append("Consumer not assigned to topics " + unassignedTopics);
         }
+
+        return new HealthStatus(healthy, msgBuilder.toString());
     }
 
     public static final class HealthStatus {
@@ -136,6 +156,25 @@ public class Consumer {
             sb.append(", message='").append(message).append('\'');
             sb.append('}');
             return sb.toString();
+        }
+    }
+
+    private class RebalanceListener implements ConsumerRebalanceListener {
+        @Override
+        public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+            unassignedTopics = new ArrayList<>(topics);
+        }
+
+        @Override
+        public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+            List<String> unassignedTopics = new ArrayList<>(topics);
+            for (TopicPartition topicPartition : partitions) {
+                unassignedTopics.remove(topicPartition.topic());
+                if (unassignedTopics.isEmpty()) {
+                    break;
+                }
+            }
+            Consumer.this.unassignedTopics = unassignedTopics;
         }
     }
 

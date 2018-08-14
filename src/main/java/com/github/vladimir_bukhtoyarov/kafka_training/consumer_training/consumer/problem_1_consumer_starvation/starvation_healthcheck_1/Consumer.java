@@ -64,7 +64,7 @@ public class Consumer {
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
         } catch (Throwable t) {
-            logger.error("Consumer is going to stop ");
+            logger.error("Consumer is going to stop", t);
         } finally {
             consumer.close();
         }

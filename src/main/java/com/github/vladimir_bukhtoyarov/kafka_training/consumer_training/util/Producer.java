@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Properties;
 import java.util.UUID;
@@ -40,6 +41,12 @@ public class Producer {
         });
     }
 
+    public void send(Collection<ProducerRecord<String, Message>> records) {
+        for (ProducerRecord<String, Message> record : records) {
+            send(record);
+        }
+    }
+
     public void send(Bucket rateLimiter, Iterator<ProducerRecord<String, Message>> records) {
         while (records.hasNext()) {
             rateLimiter.asScheduler().consumeUninterruptibly(1);
@@ -48,8 +55,9 @@ public class Producer {
         }
     }
 
-    private static final class SelfTest {
-
+    public void stop() {
+        producer.flush();
+        producer.close();
     }
 
 }

@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_2_missed_topics;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_3_dead_consumer.dead_consumer_healthcheck;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -65,7 +65,7 @@ public class Consumer {
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
         } catch (Throwable t) {
-            logger.error("Consumer is going to stop ");
+            logger.error("Consumer is going to stop", t);
         } finally {
             consumer.close();
         }
@@ -88,12 +88,27 @@ public class Consumer {
     }
 
     public HealthStatus getHealth() {
+        StringBuilder msgBuilder = new StringBuilder();
+        boolean healthy = true;
+
+        // check consumer thread
+        if (thread.isAlive()) {
+            msgBuilder.append("Consumer thread " + thread.getName() + " is alive");
+        } else {
+            return new HealthStatus(false, "Consumer thread " + thread.getName() + " is dead");
+        }
+
+        // check assignment
+        msgBuilder.append(" ");
         List<String> unassignedTopics = this.unassignedTopics;
         if (unassignedTopics.isEmpty()) {
-            return new HealthStatus(true, "Consumer assigned to all topics " + topics);
+            msgBuilder.append("Consumer assigned to all topics " + topics);
         } else {
-            return new HealthStatus(false, "Consumer not assigned to topics " + unassignedTopics);
+            healthy = false;
+            msgBuilder.append("Consumer not assigned to topics " + unassignedTopics);
         }
+
+        return new HealthStatus(healthy, msgBuilder.toString());
     }
 
     public static final class HealthStatus {

@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_2_missed_topics;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_2_missed_topics._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -9,7 +9,6 @@ import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.KafkaAdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
@@ -77,21 +76,6 @@ public class Demo {
                 }
             }
         }, 10000, 10000);
-    }
-
-    public static final class CreateTopic {
-
-        public static void main(String[] args) {
-            Map<String, Object> properties = new HashMap<>();
-            properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, Constants.bootstrapServers);
-            AdminClient admin = AdminClient.create(properties);
-            int numPartitions = 3;
-            short replicationFactor = (short) 1;
-            NewTopic newTopic = new NewTopic("not-existed", numPartitions, replicationFactor);
-            admin.createTopics(Collections.singleton(newTopic));
-            admin.close();
-        }
-
     }
 
 }

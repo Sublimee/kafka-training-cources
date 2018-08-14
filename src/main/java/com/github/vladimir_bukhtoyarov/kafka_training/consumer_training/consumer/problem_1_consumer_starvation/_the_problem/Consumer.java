@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.starvation_healthcheck_2;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -7,13 +7,15 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
@@ -23,9 +25,6 @@ public class Consumer {
 
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
-    private final Set<String> topics;
-
-    private volatile List<String> unassignedTopics;
 
     public Consumer(String clientId, Set<String> topics) {
         this(clientId, topics, Collections.emptyMap());
@@ -42,8 +41,6 @@ public class Consumer {
         propertiesOverride.forEach(properties::put);
 
         this.consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new JsonSerDer());
-        this.topics = topics;
-        this.unassignedTopics = new ArrayList<>(topics);
         consumer.subscribe(topics);
     }
 
@@ -63,7 +60,6 @@ public class Consumer {
                     processRecord(record);
                 }
                 consumer.commitSync();
-                checkAssignment();
             }
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
@@ -72,18 +68,6 @@ public class Consumer {
         } finally {
             consumer.close();
         }
-    }
-
-    private void checkAssignment() {
-        List<String> unassignedTopics = new ArrayList<>(topics);
-        Set<TopicPartition> assignment = this.consumer.assignment();
-        for (TopicPartition topicPartition : assignment) {
-            unassignedTopics.remove(topicPartition.topic());
-            if (unassignedTopics.isEmpty()) {
-                break;
-            }
-        }
-        this.unassignedTopics = unassignedTopics;
     }
 
     private void processRecord(ConsumerRecord<String, Message> record) throws Throwable {
@@ -99,43 +83,6 @@ public class Consumer {
             Class errorClass = Class.forName(payload.getErrorClass());
             Throwable t = (Throwable) errorClass.newInstance();
             throw t;
-        }
-    }
-
-    public HealthStatus getHealth() {
-        List<String> unassignedTopics = this.unassignedTopics;
-        if (unassignedTopics.isEmpty()) {
-            return new HealthStatus(true, "Consumer assigned to all topics " + topics);
-        } else {
-            return new HealthStatus(false, "Consumer not assigned to topics " + unassignedTopics);
-        }
-    }
-
-    public static final class HealthStatus {
-
-        private final boolean healthy;
-        private final String message;
-
-        public HealthStatus(boolean healthy, String message) {
-            this.healthy = healthy;
-            this.message = message;
-        }
-
-        public boolean isHealthy() {
-            return healthy;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        @Override
-        public String toString() {
-            final StringBuilder sb = new StringBuilder("HealthStatus{");
-            sb.append("healthy=").append(healthy);
-            sb.append(", message='").append(message).append('\'');
-            sb.append('}');
-            return sb.toString();
         }
     }
 

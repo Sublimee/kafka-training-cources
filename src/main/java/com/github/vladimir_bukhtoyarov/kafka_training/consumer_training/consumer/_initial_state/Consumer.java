@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.initial;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer._initial_state;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -61,7 +61,7 @@ public class Consumer {
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
         } catch (Throwable t) {
-            logger.error("Consumer is going to stop ");
+            logger.error("Consumer is going to stop", t);
         } finally {
             consumer.close();
         }

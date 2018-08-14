@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.initial;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer._initial_state;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -7,21 +7,35 @@ import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Pro
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 import java.time.Duration;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.UUID;
+import java.util.*;
 
 public class Demo {
 
     // ********* Plan **************
-    // 1 - Start producer and consumers 1,2,3,4
+    // 1 - Start producer.
+    //     Show few messages via admin panel.
+    //     Explain producer logs(partitions, offset).
     //
-    // 2 - Show that one consumer reads nothing and there are no errors in the logs.
-    //     Describe why health-check to cover this problem has matter.
+    // 2 - Start consumer-1, show consumer logs.
+    //     Point that consumer-1 listen all partitions.
+    //     Point to the offset from that consumer started to listen.
+    //
+    // 3 - Restart  consumer-1,
+    //     Point to the offset from that consumer started to listen.
+    //     Explain why "auto.offset.reset" is very major option.
+    //
+    // 4 - Start consumer-2,
+    //     Show consumer group on topic panel, point to the unfair partitioning.
+    //
+    // 5 - Start consumer-3, Show consumer group on topic panel, point to the balanced partitioning.
 
+    // 6 - Start consumer-4, show consumer logs.
+    //     Point that consumer-4 listen all partitions.
+    //     Point to the offset from that consumer started to listen, describe the differences with consumer-1
 
     private static final class StartProducer {
         public static void main(String[] args) {
@@ -63,9 +77,13 @@ public class Demo {
 
     private static final class StartConsumer_4 {
         public static void main(String[] args) {
-            Consumer consumer = new Consumer("consumer-4", Collections.singleton(Constants.TOPIC));
+            Map<String, Object> overrides = new HashMap<>();
+            overrides.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+            overrides.put(ConsumerConfig.GROUP_ID_CONFIG, "group-2");
+            Consumer consumer = new Consumer("consumer-4", Collections.singleton(Constants.TOPIC), overrides);
             consumer.start();
         }
     }
+
 
 }

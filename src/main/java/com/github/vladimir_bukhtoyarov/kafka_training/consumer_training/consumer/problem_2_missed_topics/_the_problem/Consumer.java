@@ -1,21 +1,16 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_1_consumer_starvation.initial;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_2_missed_topics._the_problem;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Message;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
@@ -25,6 +20,9 @@ public class Consumer {
 
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
+    private final Set<String> topics;
+
+    private volatile List<String> unassignedTopics;
 
     public Consumer(String clientId, Set<String> topics) {
         this(clientId, topics, Collections.emptyMap());
@@ -41,7 +39,10 @@ public class Consumer {
         propertiesOverride.forEach(properties::put);
 
         this.consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new JsonSerDer());
-        consumer.subscribe(topics);
+        this.topics = topics;
+        this.unassignedTopics = new ArrayList<>(topics);
+
+        consumer.subscribe(topics, new RebalanceListener());
     }
 
     public void start() {
@@ -64,7 +65,7 @@ public class Consumer {
         } catch (WakeupException e) {
             logger.info("Consumer is going to stop normally");
         } catch (Throwable t) {
-            logger.error("Consumer is going to stop ");
+            logger.error("Consumer is going to stop");
         } finally {
             consumer.close();
         }
@@ -83,6 +84,62 @@ public class Consumer {
             Class errorClass = Class.forName(payload.getErrorClass());
             Throwable t = (Throwable) errorClass.newInstance();
             throw t;
+        }
+    }
+
+    public HealthStatus getHealth() {
+        List<String> unassignedTopics = this.unassignedTopics;
+        if (unassignedTopics.isEmpty()) {
+            return new HealthStatus(true, "Consumer assigned to all topics " + topics);
+        } else {
+            return new HealthStatus(false, "Consumer not assigned to topics " + unassignedTopics);
+        }
+    }
+
+    public static final class HealthStatus {
+
+        private final boolean healthy;
+        private final String message;
+
+        public HealthStatus(boolean healthy, String message) {
+            this.healthy = healthy;
+            this.message = message;
+        }
+
+        public boolean isHealthy() {
+            return healthy;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("HealthStatus{");
+            sb.append("healthy=").append(healthy);
+            sb.append(", message='").append(message).append('\'');
+            sb.append('}');
+            return sb.toString();
+        }
+    }
+
+    private class RebalanceListener implements ConsumerRebalanceListener {
+        @Override
+        public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+            unassignedTopics = new ArrayList<>(topics);
+        }
+
+        @Override
+        public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+            List<String> unassignedTopics = new ArrayList<>(topics);
+            for (TopicPartition topicPartition : partitions) {
+                unassignedTopics.remove(topicPartition.topic());
+                if (unassignedTopics.isEmpty()) {
+                    break;
+                }
+            }
+            Consumer.this.unassignedTopics = unassignedTopics;
         }
     }
 
