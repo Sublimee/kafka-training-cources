@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_6_going_to_multithreading;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_7_long_rebalance.cancel_not_scheduled_futures;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -16,10 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
@@ -33,12 +30,13 @@ public class Consumer {
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
     private final Set<String> topics;
-    private final ExecutorService executor;
+    private final ThreadPoolExecutor executor;
 
     private volatile List<String> unassignedTopics;
     private volatile String lastPollError;
     private volatile long lastPollStartedTimestamp;
     private volatile long lag = 0;
+    private volatile long messagesInProgress = 0;
 
     private final Map<TopicPartition, Deque<RecordInProgress>> recordsInProgress = new HashMap<>();
 
@@ -47,11 +45,11 @@ public class Consumer {
                                     .withSynchronizationStrategy(SynchronizationStrategy.NONE)
                                     .build();
 
-    public Consumer(String clientId, Set<String> topics, ExecutorService executor) {
+    public Consumer(String clientId, Set<String> topics, ThreadPoolExecutor executor) {
         this(clientId, topics, executor, Collections.emptyMap());
     }
 
-    public Consumer(String clientId, Set<String> topics, ExecutorService executor, Map<String, Object> propertiesOverride) {
+    public Consumer(String clientId, Set<String> topics, ThreadPoolExecutor executor, Map<String, Object> propertiesOverride) {
         Properties properties = new Properties();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, Constants.bootstrapServers);
         properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
@@ -183,11 +181,10 @@ public class Consumer {
     }
 
     private CompletableFuture<Void> scheduleRecord(ConsumerRecord<String, Message> record) {
-        Supplier<Void> resultSupplier = () -> {
-            processRecord(record);
-            return null;
-        };
-        return CompletableFuture.supplyAsync(resultSupplier, executor);
+        CompletableFuture<Void> feature = new CompletableFuture<>();
+        CancellableMessageTask task = new CancellableMessageTask(record, feature);
+        executor.execute(task);
+        return feature;
     }
 
     private void processRecord(ConsumerRecord<String, Message> record) {
@@ -263,6 +260,31 @@ public class Consumer {
         return new HealthStatus(healthy, msgBuilder.toString());
     }
 
+    private class CancellableMessageTask implements Runnable {
+
+        private final ConsumerRecord<String, Message> record;
+        private final CompletableFuture<Void> feature;
+
+        public CancellableMessageTask(ConsumerRecord<String, Message> record, CompletableFuture<Void> feature) {
+            this.record = record;
+            this.feature = feature;
+        }
+
+        @Override
+        public void run() {
+            try {
+                processRecord(record);
+                feature.complete(null);
+            } catch (Throwable t){
+                feature.completeExceptionally(t);
+            }
+        }
+
+        public void cancel() {
+            feature.cancel(false);
+        }
+
+    }
 
     private class AsyncOffsetCommitCallback implements OffsetCommitCallback {
 
@@ -286,30 +308,50 @@ public class Consumer {
     }
 
     private void waitAllMessageToBeProcessedAndCommit() {
-        int messagesToCommit = 0;
 
+        // cancel all unscheduled tasks
+        List<Runnable> unscheduledTasks = new ArrayList<>();
+        executor.getQueue().drainTo(unscheduledTasks);
+        for (Runnable cancelledTask : unscheduledTasks) {
+            ((CancellableMessageTask) cancelledTask).cancel();
+        }
+
+        // wait uncompleted tasks
+        int messagesToCommit = 0;
+        Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
         for (Map.Entry<TopicPartition, Deque<RecordInProgress>> partitionEntry : recordsInProgress.entrySet()) {
-            for (RecordInProgress messageFuture : partitionEntry.getValue()) {
-                messagesToCommit++;
-                while (true) {
-                    if (!messageFuture.getResult().isDone()) {
-                        try {
-                            messageFuture.getResult().get();
-                            break;
-                        } catch (Throwable t) {
-                            logger.error("Failed to wait feature result", t);
-                        }
+            TopicPartition topicPartition = partitionEntry.getKey();
+            Deque<RecordInProgress> partitionRecords = partitionEntry.getValue();
+
+            RecordInProgress recordInProgress = partitionRecords.peekFirst();
+            if (recordInProgress == null || recordInProgress.getResult().isCancelled()) {
+                break;
+            }
+            CompletableFuture<Void> messageFuture = recordInProgress.getResult();
+            while (true) {
+                if (!messageFuture.isDone()) {
+                    try {
+                        messageFuture.get();
+                        break;
+                    } catch (Throwable t) {
+                        logger.error("Failed to wait feature result", t);
                     }
                 }
             }
+            messagesToCommit++;
+            OffsetAndMetadata offsetToCommit = new OffsetAndMetadata(recordInProgress.getRecord().offset() + 1);
+            offsetsToCommit.put(topicPartition, offsetToCommit);
+            partitionRecords.removeFirst();
         }
-        if (messagesToCommit <= 0) {
+
+        if (messagesToCommit == 0) {
             logger.info("Nothing to commit");
             return;
         }
+
+        logger.info("Going to commit {} messages", messagesToCommit);
         try {
-            consumer.commitSync();
-            logger.info("Successfully committed {} messages", messagesToCommit);
+            consumer.commitSync(offsetsToCommit);
         } catch (Throwable t) {
             logger.error("{} messages can be duplicated because of fail to commit", messagesToCommit, t);
         } finally {
