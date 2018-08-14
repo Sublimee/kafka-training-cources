@@ -36,7 +36,6 @@ public class Consumer {
     private volatile String lastPollError;
     private volatile long lastPollStartedTimestamp;
     private volatile long lag = 0;
-    private volatile long messagesInProgress = 0;
 
     private final Map<TopicPartition, Deque<RecordInProgress>> recordsInProgress = new HashMap<>();
 

@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_8_consumer_backpressure._the_problem;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_8_consumer_backpressure.implementing_backpressure;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.InfiniteIterator;
@@ -25,8 +25,8 @@ public class Demo {
     //    Wait until lag become to zero
     //
     // 2 - Start producer.
-    //     Point that queue of consumer constantly increased.
-    //     Wait to OutOfMemoryError on consumer
+    //     Point that queue of consumer approximately equals to backpressure value
+    //     Point to overloading health-check
 
     private static final class StartProducer {
         public static void main(String[] args) {

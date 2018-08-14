@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_8_consumer_backpressure._the_problem;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_8_consumer_backpressure.implementing_backpressure;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.util.JsonSerDer;
@@ -27,6 +27,7 @@ public class Consumer {
     public static final long POLL_TIMEOUT = 1000L;
     public static final long POLL_THREASHOLD = POLL_TIMEOUT * 3;
     public static final long LAG_THREASHOLD = 1000;
+    private static final long PREFETCH_THRESHOLD = 1000;
 
     private final KafkaConsumer<String, Message> consumer;
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
@@ -37,6 +38,8 @@ public class Consumer {
     private volatile String lastPollError;
     private volatile long lastPollStartedTimestamp;
     private volatile long lag = 0;
+    private volatile long inProgressRecordsCount = 0;
+    private volatile boolean paused = false;
 
     private final Map<TopicPartition, Deque<RecordInProgress>> recordsInProgress = new HashMap<>();
 
@@ -121,6 +124,7 @@ public class Consumer {
         }
 
         asyncCommitProcessedMessages();
+        toggleConsumption();
 
         try {
             updateLag();
@@ -181,6 +185,7 @@ public class Consumer {
     }
 
     private CompletableFuture<Void> scheduleRecord(ConsumerRecord<String, Message> record) {
+        inProgressRecordsCount++;
         CompletableFuture<Void> feature = new CompletableFuture<>();
         CancellableMessageTask task = new CancellableMessageTask(record, feature);
         executor.execute(task);
@@ -206,6 +211,25 @@ public class Consumer {
             throw new RuntimeException(e);
         }
         throw new RuntimeException(t);
+    }
+
+    private void toggleConsumption() {
+        long inProgressRecordsCount = this.inProgressRecordsCount;
+
+        if (!paused) {
+            if (inProgressRecordsCount > PREFETCH_THRESHOLD) {
+                consumer.pause(consumer.assignment());
+                paused = true;
+                logger.warn("Subscriptions paused because of over consumption, threshold is {} messages, {} messages is in progress", PREFETCH_THRESHOLD, inProgressRecordsCount);
+            }
+            return;
+        } else {
+            if (inProgressRecordsCount <= PREFETCH_THRESHOLD) {
+                consumer.resume(consumer.paused());
+                logger.warn("Resume subscriptions after pause threshold is {} messages, {} messages is in progress", PREFETCH_THRESHOLD, inProgressRecordsCount);
+                paused = false;
+            }
+        }
     }
 
     public HealthStatus getHealth() {
@@ -257,6 +281,16 @@ public class Consumer {
             msgBuilder.append("Lag is " + lag + " messages");
         }
 
+        // check overloading
+        msgBuilder.append(" /");
+        long inProgressRecordsCount = this.inProgressRecordsCount;
+        if (inProgressRecordsCount > PREFETCH_THRESHOLD) {
+            healthy = false;
+            msgBuilder.append("Consumer overloaded. There are  " + inProgressRecordsCount + " messages in progress");
+        } else {
+            msgBuilder.append("Consumer is not overloaded");
+        }
+
         return new HealthStatus(healthy, msgBuilder.toString());
     }
 
@@ -298,6 +332,8 @@ public class Consumer {
 
         @Override
         public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception exception) {
+            inProgressRecordsCount -= messagesToCommit;
+
             // independent from result we issue permits to consume more massages from broker
             if (exception == null) {
                 logger.info("Successfully committed {} messages", messagesToCommit);
@@ -308,7 +344,6 @@ public class Consumer {
     }
 
     private void waitAllMessageToBeProcessedAndCommit() {
-
         // cancel all unscheduled tasks
         List<Runnable> unscheduledTasks = new ArrayList<>();
         executor.getQueue().drainTo(unscheduledTasks);
@@ -344,6 +379,7 @@ public class Consumer {
             partitionRecords.removeFirst();
         }
 
+        inProgressRecordsCount = 0;
         if (messagesToCommit == 0) {
             logger.info("Nothing to commit");
             return;
