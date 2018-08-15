@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_9_partial_ordering.linealizer;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_training.consumer.problem_9_partial_ordering.protection_from_long_rebalancing_in_case_of_bad_balanced_keys;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -6,6 +6,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 
@@ -13,6 +14,7 @@ public class Linealizer<K, R> {
 
     private final ConcurrentHashMap<K, Queue<LinearizedTask>> tasksByKeys = new ConcurrentHashMap<>();
     private final AtomicLong size = new AtomicLong();
+    private final AtomicBoolean continuationsAllowed = new AtomicBoolean(true);
 
     public LinearizedTask processOnKey(K key, Executor executor, Callable<R> callable) {
         LinearizedTask keyedTask = new LinearizedTask(key, executor, callable);
@@ -57,6 +59,9 @@ public class Linealizer<K, R> {
             } catch (Throwable t) {
                 future.completeExceptionally(t);
             } finally {
+                if (!continuationsAllowed.get()) {
+                    cancelAll();
+                }
                 size.decrementAndGet();
                 tasksByKeys.compute(key, (key, queue) -> {
                     LinearizedTask nextTask = queue.poll();
@@ -96,4 +101,9 @@ public class Linealizer<K, R> {
     public long getSize() {
         return size.get();
     }
+
+    public void setContinuationsAllowed(boolean continuationsAllowed) {
+        this.continuationsAllowed.set(continuationsAllowed);
+    }
+
 }
