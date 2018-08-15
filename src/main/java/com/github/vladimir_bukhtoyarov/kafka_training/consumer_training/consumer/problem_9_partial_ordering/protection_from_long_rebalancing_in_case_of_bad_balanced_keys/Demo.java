@@ -34,21 +34,6 @@ public class Demo {
     //     Start consumer 2-3
     //     Check that rebalancing was fast
 
-    private static final class StartProducer {
-        public static void main(String[] args) {
-            Producer producer = new Producer();
-            for (int i = 0; i < 100; i++) {
-                String key = "" + i % 10;
-                Message message = new Message();
-                message.setPayload("" + i);
-                message.setDelayMillis((i % 3) * 1000);
-                ProducerRecord<String, Message> record = new ProducerRecord<>(Constants.TOPIC, key, message);
-                producer.send(record);
-            }
-            producer.stop();
-        }
-    }
-
     private static final class StartInfiniteProducer {
         public static void main(String[] args) {
             Bandwidth bandwidth = Bandwidth.simple(400, Duration.ofSeconds(1))
