@@ -358,13 +358,13 @@ public class Consumer {
             TopicPartition topicPartition = partitionEntry.getKey();
             Deque<RecordInProgress> partitionRecords = partitionEntry.getValue();
 
-            RecordInProgress recordInProgress = partitionRecords.peekFirst();
-            if (recordInProgress == null || recordInProgress.getResult().isCancelled()) {
-                break;
-            }
-            CompletableFuture<Void> messageFuture = recordInProgress.getResult();
             while (true) {
-                if (!messageFuture.isDone()) {
+                RecordInProgress recordInProgress = partitionRecords.peekFirst();
+                if (recordInProgress == null || recordInProgress.getResult().isCancelled()) {
+                    break;
+                }
+                CompletableFuture<Void> messageFuture = recordInProgress.getResult();
+                while (!messageFuture.isDone()) {
                     try {
                         messageFuture.get();
                         break;
@@ -372,11 +372,11 @@ public class Consumer {
                         logger.error("Failed to wait feature result", t);
                     }
                 }
+                messagesToCommit++;
+                OffsetAndMetadata offsetToCommit = new OffsetAndMetadata(recordInProgress.getRecord().offset() + 1);
+                offsetsToCommit.put(topicPartition, offsetToCommit);
+                partitionRecords.removeFirst();
             }
-            messagesToCommit++;
-            OffsetAndMetadata offsetToCommit = new OffsetAndMetadata(recordInProgress.getRecord().offset() + 1);
-            offsetsToCommit.put(topicPartition, offsetToCommit);
-            partitionRecords.removeFirst();
         }
 
         inProgressRecordsCount = 0;

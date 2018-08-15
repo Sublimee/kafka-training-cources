@@ -291,14 +291,12 @@ public class Consumer {
         for (Map.Entry<TopicPartition, Deque<RecordInProgress>> partitionEntry : recordsInProgress.entrySet()) {
             for (RecordInProgress messageFuture : partitionEntry.getValue()) {
                 messagesToCommit++;
-                while (true) {
-                    if (!messageFuture.getResult().isDone()) {
-                        try {
-                            messageFuture.getResult().get();
-                            break;
-                        } catch (Throwable t) {
-                            logger.error("Failed to wait feature result", t);
-                        }
+                while (!messageFuture.getResult().isDone()) {
+                    try {
+                        messageFuture.getResult().get();
+                        break;
+                    } catch (Throwable t) {
+                        logger.error("Failed to wait feature result", t);
                     }
                 }
             }
