@@ -78,6 +78,8 @@ public class Consumer {
             lastPollStartedTimestamp = System.currentTimeMillis();
             records = consumer.poll(POLL_TIMEOUT);
             this.lastPollError = null;
+        } catch (WakeupException w) {
+            throw w;
         } catch (Throwable t) {
             logger.error("Failed to poll messages", t);
             this.lastPollError = "Last poll failed with error " + t.getMessage();
@@ -94,6 +96,8 @@ public class Consumer {
 
         try {
             consumer.commitSync();
+        } catch (WakeupException w) {
+            throw w;
         } catch (Throwable t) {
             logger.error("Failed to commit messages", t);
         }

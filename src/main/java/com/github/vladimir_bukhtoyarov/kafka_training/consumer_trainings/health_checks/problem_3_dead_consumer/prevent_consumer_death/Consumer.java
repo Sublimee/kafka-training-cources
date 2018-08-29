@@ -71,6 +71,8 @@ public class Consumer {
         ConsumerRecords<String, Message> records;
         try {
             records = consumer.poll(Long.MAX_VALUE);
+        } catch (WakeupException w) {
+            throw w;
         } catch (Throwable t) {
             logger.error("Failed to poll messages", t);
             return;
@@ -86,6 +88,8 @@ public class Consumer {
 
         try {
             consumer.commitSync();
+        } catch (WakeupException w) {
+            throw w;
         } catch (Throwable t) {
             logger.error("Failed to commit messages", t);
         }
