@@ -1,23 +1,17 @@
 package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_3_partial_ordering.linealizer;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Constants;
-import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.InfiniteIterator;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Message;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Producer;
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class Demo {

@@ -4,9 +4,6 @@ import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Co
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.InfiniteIterator;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Message;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Producer;
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,10 +33,6 @@ public class Demo {
 
     private static final class StartInfiniteProducer {
         public static void main(String[] args) {
-            Bandwidth bandwidth = Bandwidth.simple(400, Duration.ofSeconds(1))
-                    .withInitialTokens(0);
-            Bucket rateLimiter = Bucket4j.builder().addLimit(bandwidth).build();
-
             AtomicInteger sequence = new AtomicInteger();
             Iterator<ProducerRecord<String, Message>> records = new InfiniteIterator<>(() -> {
                 int i = sequence.getAndIncrement();
@@ -51,7 +44,7 @@ public class Demo {
             });
 
             Producer producer = new Producer();
-            producer.send(rateLimiter, records);
+            producer.send(400, Duration.ofSeconds(1), records);
         }
     }
 

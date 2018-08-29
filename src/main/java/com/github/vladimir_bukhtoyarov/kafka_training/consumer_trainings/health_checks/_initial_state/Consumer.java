@@ -3,7 +3,10 @@ package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.health
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.JsonSerDer;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Message;
-import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;

@@ -16,7 +16,9 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 public class Consumer {

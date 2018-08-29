@@ -1,12 +1,15 @@
 package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util;
 
 
+import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
+import io.github.bucket4j.Bucket4j;
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Properties;
@@ -43,7 +46,11 @@ public class Producer {
         }
     }
 
-    public void send(Bucket rateLimiter, Iterator<ProducerRecord<String, Message>> records) {
+    public void send(int tokens, Duration period, Iterator<ProducerRecord<String, Message>> records) {
+        Bucket rateLimiter = Bucket4j.builder()
+                .addLimit(Bandwidth.simple(tokens, period).withInitialTokens(0))
+                .build();
+
         while (records.hasNext()) {
             rateLimiter.asScheduler().consumeUninterruptibly(1);
             ProducerRecord<String, Message> record = records.next();
