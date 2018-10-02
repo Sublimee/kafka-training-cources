@@ -27,9 +27,13 @@ public class Demo {
     //     Wait for a 30 seconds.
     //
     // 2 - Start consumer-1
-    //     Show lag in admin panel.
-    //     Show lag in logs.
-    //     Wait until lag will be decreased to zero
+    //     Show lag via describe consumer group command.
+    //     Wait until lag will be decreased to ~ zero
+    //
+    // 3 - Stop consumer
+    //     Wait a few seconds
+    //     Start consumer
+    //     Show lag via describe consumer group command.
 
     private static final class StartProducer {
         public static void main(String[] args) {

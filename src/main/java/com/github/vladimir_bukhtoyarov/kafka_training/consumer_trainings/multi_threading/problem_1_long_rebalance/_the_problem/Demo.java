@@ -27,7 +27,11 @@ public class Demo {
     //
     // 3 - Start consumers 2-3
     //     Point that consumer 2-3 consume nothing.
-    //     Describe WTF, show stack traces of all consumers
+    //     Describe the problem with RebalanceListener
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartProducer {
         public static void main(String[] args) {

@@ -22,7 +22,9 @@ public class Demo {
     // 2 - Start producer.
     //
     // 3 - Analyze consumer logs
-    //      Point that message processing is ordered inside key
+    //     Point that message processing is ordered inside key:
+    //          "2" ordered with "12"
+    //          "5" ordered with "15"
     //
 
     private static final class StartProducer {

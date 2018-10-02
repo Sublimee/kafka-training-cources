@@ -24,6 +24,10 @@ public class Demo {
     // 2 - Start producer.
     //     Point that queue of consumer constantly increased.
     //     Wait to OutOfMemoryError on consumer
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartProducer {
         public static void main(String[] args) {

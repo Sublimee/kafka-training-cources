@@ -27,8 +27,12 @@ public class Demo {
     //     Wait until 5000 lag in Admin Panel
     //
     // 3 - Start consumers 2-3
-    //     Point that consumer 2-3 consume nothing.
-    //     Describe WTF, show stack traces of all consumers
+    //     Point that consumer 2-3 begin consumtion imediatelly
+    //     Point that lag continiouslly decreasingt
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartProducer {
         public static void main(String[] args) {

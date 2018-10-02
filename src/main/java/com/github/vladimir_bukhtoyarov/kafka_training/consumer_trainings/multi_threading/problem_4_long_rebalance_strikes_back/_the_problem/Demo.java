@@ -24,14 +24,15 @@ public class Demo {
     //
     // 2 - Start producer.
     //
-    // 3 - Analyze consumer logs
-    //      Point that message processing is ordered inside key
-    //
-    // 4 - Start producer. Wait to a significant lag.
+    // 3 - Start producer. Wait to a significant lag.
     //     Point to the size of executor queue, explain the small value of queue size.
     //
     // 5 - Wait to significant lag
     //     Start consumer 2-3 explain the lags of rebalancing
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartProducer {
         public static void main(String[] args) {

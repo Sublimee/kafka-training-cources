@@ -24,12 +24,15 @@ public class Demo {
     //
     // 2 - Start producer.
     //
-    //
     // 3 - Start InfiniteProducer.
     //
     // 4 - Wait to significant lag
     //     Start consumer 2-3
     //     Check that rebalancing was fast
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartInfiniteProducer {
         public static void main(String[] args) {
