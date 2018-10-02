@@ -34,7 +34,7 @@ public class SeekToEnd {
 
         Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
         endOffsets.forEach((partition, offset) -> {
-            offsetsToCommit.put(partition, new OffsetAndMetadata(offset + 1));
+            offsetsToCommit.put(partition, new OffsetAndMetadata(offset));
         });
 
         consumer.commitSync(offsetsToCommit);
