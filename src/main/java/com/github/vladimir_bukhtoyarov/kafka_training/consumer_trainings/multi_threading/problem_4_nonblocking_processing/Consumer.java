@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_4_long_rebalance_strikes_back.protection_from_long_rebalancing_in_case_of_bad_balanced_keys;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_4_nonblocking_processing;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.JsonSerDer;
@@ -16,10 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.*;
 
 public class Consumer {
 
@@ -33,7 +30,7 @@ public class Consumer {
     private final Thread thread = new Thread(this::consumeInfinitely, "Kafka-consumer-event-loop");
     private final Set<String> topics;
     private final ThreadPoolExecutor executor;
-    private final Linealizer<String, Void> linealizer = new Linealizer<>();
+    private final Linealizer<String, CompletableFuture<Void>> linealizer = new Linealizer<>();
 
     private volatile List<String> unassignedTopics;
     private volatile String lastPollError;
@@ -189,33 +186,62 @@ public class Consumer {
 
     private CompletableFuture<Void> scheduleRecord(ConsumerRecord<String, Message> record) {
         inProgressRecordsCount++;
-        Linealizer.LinearizedTask task = linealizer.processOnKey(record.key(), executor, () -> {
-            processRecord(record);
-            return null;
-        });
-        return task.getFuture();
-    }
-
-    private void processRecord(ConsumerRecord<String, Message> record) {
         String key = record.key();
         Message payload = record.value();
         logger.info("Received partition={} offset={} key={} payload={}", record.partition(), record.offset(), key, payload);
 
-        if (payload.getDelayMillis() != null) {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(payload.getDelayMillis()));
-        }
-        if (payload.getErrorClass() == null) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Linealizer.LinearizedTask task = linealizer.processOnKey(key, executor, () -> {
+            return processRecord(record);
+        });
+        CompletableFuture<CompletableFuture<Void>> linearizedResult = task.getFuture();
+        linearizedResult.whenComplete((future, throwable) -> {
             logger.info("Processed partition={} offset={} key={} payload={}", record.partition(), record.offset(), key, payload);
-            return;
+            if (throwable != null) {
+                result.completeExceptionally(throwable);
+            } else {
+                future.whenComplete((r, t) -> {
+                    if (t != null) {
+                        result.completeExceptionally(t);
+                    } else {
+                        result.complete(r);
+                    }
+                });
+            }
+        });
+        return result;
+    }
+
+
+    private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
+    private CompletableFuture<Void> processRecord(ConsumerRecord<String, Message> record) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Message payload = record.value();
+
+        if (payload.getErrorClass() != null) {
+            Throwable t;
+            try {
+                Class errorClass = Class.forName(payload.getErrorClass());
+                t = (Throwable) errorClass.newInstance();
+            } catch (Throwable e) {
+                t = e;
+            }
+            result.completeExceptionally(t);
+            return result;
         }
-        Throwable t;
-        try {
-            Class errorClass = Class.forName(payload.getErrorClass());
-            t = (Throwable) errorClass.newInstance();
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
+
+
+        if (payload.getDelayMillis() == null) {
+            result.complete(null);
+            return result;
         }
-        throw new RuntimeException(t);
+
+        scheduler.schedule(() -> {
+            result.complete(null);
+        }, payload.getDelayMillis(), TimeUnit.MILLISECONDS);
+
+        return result;
     }
 
     private void toggleConsumption() {
@@ -323,15 +349,6 @@ public class Consumer {
     }
 
     private void waitAllMessageToBeProcessedAndCommit() {
-        // cancelAll all unscheduled tasks
-        linealizer.setContinuationsAllowed(false);
-
-        List<Runnable> unscheduledTasks = new ArrayList<>();
-        executor.getQueue().drainTo(unscheduledTasks);
-        for (Runnable cancelledTask : unscheduledTasks) {
-            ((Linealizer.LinearizedTask) cancelledTask).cancelAll();
-        }
-
         // wait uncompleted tasks
         int messagesToCommit = 0;
         Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
@@ -341,7 +358,7 @@ public class Consumer {
 
             while (true) {
                 RecordInProgress recordInProgress = partitionRecords.peekFirst();
-                if (recordInProgress == null || recordInProgress.getResult().isCancelled()) {
+                if (recordInProgress == null) {
                     break;
                 }
                 CompletableFuture<Void> messageFuture = recordInProgress.getResult();
@@ -359,7 +376,6 @@ public class Consumer {
                 partitionRecords.removeFirst();
             }
         }
-        linealizer.setContinuationsAllowed(true);
 
         inProgressRecordsCount = 0;
         if (messagesToCommit == 0) {
@@ -447,7 +463,7 @@ public class Consumer {
         }
     }
 
-    public Linealizer<String, Void> getLinealizer() {
+    public Linealizer<String, CompletableFuture<Void>> getLinealizer() {
         return linealizer;
     }
 

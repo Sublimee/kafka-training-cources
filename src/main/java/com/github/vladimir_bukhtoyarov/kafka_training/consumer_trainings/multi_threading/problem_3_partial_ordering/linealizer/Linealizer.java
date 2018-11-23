@@ -74,23 +74,6 @@ public class Linealizer<K, R> {
             }
         }
 
-        public void cancelAll() {
-            size.decrementAndGet();
-            future.cancel(false);
-            tasksByKeys.compute(key, (key, queue) -> {
-                while (true) {
-                    LinearizedTask nextTask = queue.poll();
-                    if (nextTask == null) {
-                        // there is no tasks with same key, lets remove queue from CHM
-                        return null;
-                    }
-                    size.decrementAndGet();
-                    // schedule the next task with same key
-                    nextTask.future.cancel(false);
-                }
-            });
-        }
-
     }
 
     public long getSize() {

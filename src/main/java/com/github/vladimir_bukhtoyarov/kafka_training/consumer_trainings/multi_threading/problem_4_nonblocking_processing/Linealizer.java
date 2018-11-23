@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_5_nonblocking_processing;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_4_nonblocking_processing;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -14,7 +14,6 @@ public class Linealizer<K, R> {
 
     private final ConcurrentHashMap<K, Queue<LinearizedTask>> tasksByKeys = new ConcurrentHashMap<>();
     private final AtomicLong size = new AtomicLong();
-    private final AtomicBoolean continuationsAllowed = new AtomicBoolean(true);
 
     public LinearizedTask processOnKey(K key, Executor executor, Callable<R> callable) {
         LinearizedTask keyedTask = new LinearizedTask(key, executor, callable);
@@ -59,9 +58,6 @@ public class Linealizer<K, R> {
             } catch (Throwable t) {
                 future.completeExceptionally(t);
             } finally {
-                if (!continuationsAllowed.get()) {
-                    cancelAll();
-                }
                 size.decrementAndGet();
                 tasksByKeys.compute(key, (key, queue) -> {
                     LinearizedTask nextTask = queue.poll();
@@ -79,31 +75,10 @@ public class Linealizer<K, R> {
             }
         }
 
-        public void cancelAll() {
-            size.decrementAndGet();
-            future.cancel(false);
-            tasksByKeys.compute(key, (key, queue) -> {
-                while (true) {
-                    LinearizedTask nextTask = queue.poll();
-                    if (nextTask == null) {
-                        // there is no tasks with same key, lets remove queue from CHM
-                        return null;
-                    }
-                    size.decrementAndGet();
-                    // schedule the next task with same key
-                    nextTask.future.cancel(false);
-                }
-            });
-        }
-
     }
 
     public long getSize() {
         return size.get();
-    }
-
-    public void setContinuationsAllowed(boolean continuationsAllowed) {
-        this.continuationsAllowed.set(continuationsAllowed);
     }
 
 }

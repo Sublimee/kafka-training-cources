@@ -323,13 +323,6 @@ public class Consumer {
     }
 
     private void waitAllMessageToBeProcessedAndCommit() {
-        // cancelAll all unscheduled tasks
-        List<Runnable> unscheduledTasks = new ArrayList<>();
-        executor.getQueue().drainTo(unscheduledTasks);
-        for (Runnable cancelledTask : unscheduledTasks) {
-            ((Linealizer.LinearizedTask) cancelledTask).cancelAll();
-        }
-
         // wait uncompleted tasks
         int messagesToCommit = 0;
         Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
@@ -339,7 +332,7 @@ public class Consumer {
 
             while (true) {
                 RecordInProgress recordInProgress = partitionRecords.peekFirst();
-                if (recordInProgress == null || recordInProgress.getResult().isCancelled()) {
+                if (recordInProgress == null) {
                     break;
                 }
                 CompletableFuture<Void> messageFuture = recordInProgress.getResult();

@@ -1,4 +1,4 @@
-package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_5_nonblocking_processing;
+package com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.multi_threading.problem_4_nonblocking_processing;
 
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.Constants;
 import com.github.vladimir_bukhtoyarov.kafka_training.consumer_trainings.util.InfiniteIterator;
@@ -14,7 +14,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class Demo {
