@@ -23,17 +23,23 @@ public class Demo {
     //        - Complexity of rebalance listener
     //        - Graceful shutdown
     //
-    // 1 - Start producer.
+    // 1 - Start consumer
+    //
+    // 2. - Start producer.
     //     Wait for a 30 seconds.
     //
-    // 2 - Start consumer-1
-    //     Show lag via describe consumer group command.
-    //     Wait until lag will be decreased to ~ zero
+    // 3. - Show that there are no lag.
     //
-    // 3 - Stop consumer
-    //     Wait a few seconds
-    //     Start consumer
-    //     Show lag via describe consumer group command.
+    // 4. - Stop consumer.
+    //     Wait 30 seconds.
+    //     Show the lag.
+    //
+    // 5. - Start consumer again, show that lag decreasing.
+    //
+    //
+    // Cleanup:
+    // * Stop producer and all consumers.
+    // * Reset offset via SeekToEnd
 
     private static final class StartProducer {
         public static void main(String[] args) {
@@ -47,6 +53,10 @@ public class Demo {
             Producer producer = new Producer();
             producer.send(100, Duration.ofSeconds(1), records);
         }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(true & true);
     }
 
     private static final class StartConsumer_1 {
