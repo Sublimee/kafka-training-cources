@@ -25,6 +25,8 @@ public class Demo {
     //     Point that queue of consumer approximately equals to backpressure value
     //     Point to overloading health-check
     //
+    // 3 - Start consumer-2, explain how does prefetch control help to speed-up rebalancing
+    //
     // Cleanup:
     // * Stop producer and all consumers.
     // * Reset offset via SeekToEnd
@@ -50,6 +52,18 @@ public class Demo {
             ThreadPoolExecutor executor = new ThreadPoolExecutor(100, 100, Long.MAX_VALUE, TimeUnit.MILLISECONDS, queue);
 
             Consumer consumer = new Consumer("consumer-1", topics, executor);
+            consumer.start();
+            initHealthCheck(consumer, executor);
+        }
+    }
+
+    private static final class StartConsumer_2 {
+        public static void main(String[] args) {
+            Set<String> topics = new HashSet<>(Collections.singleton(Constants.TOPIC));
+            BlockingQueue queue = new LinkedBlockingQueue();
+            ThreadPoolExecutor executor = new ThreadPoolExecutor(100, 100, Long.MAX_VALUE, TimeUnit.MILLISECONDS, queue);
+
+            Consumer consumer = new Consumer("consumer-2", topics, executor);
             consumer.start();
             initHealthCheck(consumer, executor);
         }

@@ -27,7 +27,7 @@ public class Demo {
     //
     // 3 - Start consumers 2-3
     //     Point that consumer 2-3 consume nothing.
-    //     Describe the problem with RebalanceListener
+    //     Find "Executor queue size" string on first consumer, describe the problem with RebalanceListener,
     //
     // Cleanup:
     // * Stop producer and all consumers.
